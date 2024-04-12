@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Joystick Calibration Tool</title>
+<style>
+    body { font-family: Arial, sans-serif; }
+    .output { margin-top: 20px; }
+    #instructions, #finalData { margin-bottom: 20px; }
+    #finalData { white-space: pre; }
+</style>
+</head>
+<body>
+<h1>Joystick Calibration Tool</h1>
+<div class="output">
+    <p>Left Joystick X: <span id="leftJoystickX">0</span></p>
+    <p>Left Joystick Y: <span id="leftJoystickY">0</span></p>
+    <p>Right Joystick X: <span id="rightJoystickX">0</span></p>
+    <p>Right Joystick Y: <span id="rightJoystickY">0</span></p>
+    <p id="instructions"></p>
+    <div id="finalData"></div>
+</div>
+<script>
+    let directions = [
+        { stick: 'left', direction: 'left' },
+        { stick: 'left', direction: 'right' },
+        { stick: 'left', direction: 'up' },
+        { stick: 'left', direction: 'down' },
+        { stick: 'right', direction: 'left' },
+        { stick: 'right', direction: 'right' },
+        { stick: 'right', direction: 'up' },
+        { stick: 'right', direction: 'down' }
+    ];
+    let calibrationData = {};
+    directions.forEach(d => {
+        calibrationData[d.stick + d.direction] = [];
+    });
+    let currentDirectionIndex = 0;
+    let currentStep = 0;
+    const totalSteps = 10;
+    let isWaitingForRelease = false;
+    const extremeThreshold = 0.9;
+    const neutralThreshold = 0.1;
+    let lastThreeReadings = [];
+
+    function hasStabilized() {
+        if (lastThreeReadings.length === 3) {
+            const [first, second, third] = lastThreeReadings.map(r => Math.sqrt(r.x**2 + r.y**2));
+            const threshold = 5; // Adjust this value as needed
+            return Math.abs(first - second) <= threshold && Math.abs(second - third) <= threshold;
+        }
+        return false;
+    }
+
+    function startCalibration() {
+        window.requestAnimationFrame(updateGamepadStatus);
+        instructMove();
+    }
+
+    function updateGamepadStatus() {
+        const gamepads = navigator.getGamepads();
+        if (gamepads[0]) {
+            const gp = gamepads[0];
+            const lx = convertTo8Bit(gp.axes[0]);
+            const ly = convertTo8Bit(gp.axes[1]);
+            const rx = convertTo8Bit(gp.axes[2]);
+            const ry = convertTo8Bit(gp.axes[3]);
+            displayJoystickValues(lx, ly, rx, ry);
+            handleCalibration(lx, ly, rx, ry);
+        } else {
+            console.log("Please connect a gamepad and press any button.");
+        }
+        window.requestAnimationFrame(updateGamepadStatus);
+    }
+
+    function convertTo8Bit(value) {
+        return Math.round(((value + 1) / 2) * 255);
+    }
+
+    function displayJoystickValues(lx, ly, rx, ry) {
+        document.getElementById('leftJoystickX').textContent = lx;
+        document.getElementById('leftJoystickY').textContent = ly;
+        document.getElementById('rightJoystickX').textContent = rx;
+        document.getElementById('rightJoystickY').textContent = ry;
+    }
+
+    function handleCalibration(lx, ly, rx, ry) {
+        if (currentDirectionIndex >= directions.length) {
+            instruct("Calibration complete.");
+            showFinalData();
+            return;
+        }
+
+        let x, y;
+        const currentDirection = directions[currentDirectionIndex];
+        if (currentDirection.stick === 'left') {
+            x = lx;
+            y = ly;
+        } else {
+            x = rx;
+            y = ry;
+        }
+
+        updateLastThreeReadings(x, y);
+
+        const isAtExtreme = isJoystickAtExtreme(x, y, currentDirection.direction);
+        const isNeutral = isJoystickInNeutral(x, y) && hasStabilized();
+
+        if (isWaitingForRelease) {
+            if (isNeutral) {
+                calibrationData[currentDirection.stick + currentDirection.direction].push({ x, y });
+                isWaitingForRelease = false;
+                currentStep++;
+                if (currentStep < totalSteps) {
+                    instructMove();
+                } else {
+                    completeCurrentDirection();
+                }
+            }
+        } else {
+            if (isAtExtreme) {
+                instruct(`Release ${currentDirection.stick} joystick from ${currentDirection.direction}.`);
+                isWaitingForRelease = true;
+            }
+        }
+    }
+
+    function updateLastThreeReadings(x, y) {
+        lastThreeReadings.push({ x, y });
+        if (lastThreeReadings.length > 3) {
+            lastThreeReadings.shift();
+        }
+    }
+
+    function completeCurrentDirection() {
+        currentDirectionIndex++;
+        currentStep = 0;
+        lastThreeReadings = [];
+        isWaitingForRelease = false;
+        if (currentDirectionIndex < directions.length) {
+            instructMove();
+        } else {
+            instruct("Calibration complete.");
+            showFinalData();
+        }
+    }
+
+    function isJoystickAtExtreme(x, y, direction) {
+        const threshold = extremeThreshold * 127;
+        switch (direction) {
+            case 'left':
+                return x < 128 - threshold;
+            case 'right':
+                return x > 128 + threshold;
+            case 'up':
+                return y < 128 - threshold;
+            case 'down':
+                return y > 128 + threshold;
+        }
+    }
+
+    function isJoystickInNeutral(x, y) {
+        return Math.abs(x - 128) < (neutralThreshold * 127) && Math.abs(y - 128) < (neutralThreshold * 127);
+    }
+
+    function showFinalData() {
+        let resultText = "";
+        directions.forEach(d => {
+            const key = d.stick + d.direction;
+            const dataPoints = calibrationData[key].map(p => (d.direction === 'left' || d.direction === 'right') ? p.x : p.y);
+            const variance = dataPoints.reduce((acc, val) => acc + Math.pow(val - (dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length), 2), 0) / dataPoints.length;
+            const stdDev = Math.sqrt(variance);
+            resultText += `${d.stick.charAt(0).toUpperCase() + d.stick.slice(1)} stick - ${d.direction.charAt(0).toUpperCase() + d.direction.slice(1)}:\nStop positions: ${dataPoints.join(', ')}\nVariance: ${variance.toFixed(2)}, Std Dev: ${stdDev.toFixed(2)}\n\n`;
+        });
+        document.getElementById('finalData').textContent = resultText.trim();
+    }
+
+    function instructMove() {
+        const direction = directions[currentDirectionIndex];
+        instruct(`Move ${direction.stick} joystick ${direction.direction} to the extreme and hold.`);
+    }
+
+    function instruct(message) {
+        document.getElementById('instructions').textContent = message;
+    }
+
+    window.addEventListener('gamepadconnected', (event) => {
+        console.log('Gamepad connected:', event.gamepad);
+        startCalibration();
+    });
+</script>
+</body>
+</html>
