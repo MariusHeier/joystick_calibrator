@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dual Joystick Controlled Animation</title>
+<style>
+  body { background-color: black; display: flex; justify-content: space-around; align-items: center; height: 100vh; }
+  canvas { width: 48vw; height: 85vh; border: 1px solid white; } /* Adjusted to reduce padding */
+  .canvas-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .joystick-values {
+    color: white;
+    font-family: Arial, sans-serif;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="canvas-container">
+  <canvas id="moonCanvas"></canvas>
+  <div class="joystick-values" id="moonValues"></div>
+</div>
+<div class="canvas-container">
+  <canvas id="planetCanvas"></canvas>
+  <div class="joystick-values" id="planetValues"></div>
+</div>
+<script>
+const moonCanvas = document.getElementById('moonCanvas');
+moonCanvas.width = moonCanvas.offsetWidth;
+moonCanvas.height = moonCanvas.offsetHeight;
+const planetCanvas = document.getElementById('planetCanvas');
+planetCanvas.width = planetCanvas.offsetWidth;
+planetCanvas.height = planetCanvas.offsetHeight;
+
+const moonCtx = moonCanvas.getContext('2d');
+const planetCtx = planetCanvas.getContext('2d');
+
+const celestialRadius = 20; // Uniform size for both moon and planet
+const sunRadius = 25; // Slightly larger suns
+
+// Function to map 8-bit values to canvas coordinates
+function map8BitToCanvas(value, dimension) {
+    return Math.floor(value / 255 * dimension);
+}
+
+// Function to convert float range (-1 to 1) to 8-bit range (0 to 255)
+function floatTo8Bit(value) {
+    return Math.floor((value + 1) * 128); // Converts -1 to 1 range into 0 to 255
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const left_leftRight = map8BitToCanvas(parseInt(urlParams.get('left_leftright'), 10), moonCanvas.width) || moonCanvas.width / 2;
+const left_upDown = map8BitToCanvas(parseInt(urlParams.get('left_up_down'), 10), moonCanvas.height) || moonCanvas.height / 2;
+const right_leftRight = map8BitToCanvas(parseInt(urlParams.get('right_leftright'), 10), planetCanvas.width) || planetCanvas.width / 2;
+const right_upDown = map8BitToCanvas(parseInt(urlParams.get('right_updown'), 10), planetCanvas.height) || planetCanvas.height / 2;
+
+const sun = {
+    x: left_leftRight,
+    y: left_upDown,
+    radius: sunRadius
+};
+
+const moon = {
+    x: moonCanvas.width / 4,
+    y: moonCanvas.height / 2,
+    radius: celestialRadius
+};
+
+const planet = {
+    x: planetCanvas.width / 4,
+    y: planetCanvas.height / 2,
+    radius: celestialRadius
+};
+
+function drawSun(ctx, x, y, radius) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'yellow';
+    ctx.fill();
+    ctx.strokeStyle = 'orange';
+    ctx.stroke();
+}
+
+function drawMoon() {
+    moonCtx.clearRect(0, 0, moonCanvas.width, moonCanvas.height);
+    drawSun(moonCtx, sun.x, sun.y, sun.radius);
+    moonCtx.beginPath();
+    moonCtx.arc(moon.x, moon.y, moon.radius, 0, Math.PI * 2);
+    moonCtx.fillStyle = 'grey';
+    moonCtx.fill();
+    requestAnimationFrame(drawMoon);
+}
+
+function drawPlanet() {
+    planetCtx.clearRect(0, 0, planetCanvas.width, planetCanvas.height);
+    drawSun(planetCtx, right_leftRight, right_upDown, sunRadius);
+    planetCtx.beginPath();
+    planetCtx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+    planetCtx.fillStyle = 'red';
+    planetCtx.fill();
+    requestAnimationFrame(drawPlanet);
+}
+
+function updateJoystickPositions() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (gamepads[0]) {
+        const gp = gamepads[0];
+        moon.x = (gp.axes[0] + 1) / 2 * moonCanvas.width;
+        moon.y = (gp.axes[1] + 1) / 2 * moonCanvas.height;
+        planet.x = (gp.axes[2] + 1) / 2 * planetCanvas.width;
+        planet.y = (gp.axes[3] + 1) / 2 * planetCanvas.height;
+
+        document.getElementById('moonValues').innerText = 'LEFT/RIGHT: ' + floatTo8Bit(gp.axes[0]) + ', UP/DOWN: ' + floatTo8Bit(gp.axes[1]);
+        document.getElementById('planetValues').innerText = 'LEFT/RIGHT: ' + floatTo8Bit(gp.axes[2]) + ', UP/DOWN: ' + floatTo8Bit(gp.axes[3]);
+    } else {
+        console.log("No gamepad detected. Please connect a gamepad and press any button.");
+    }
+    requestAnimationFrame(updateJoystickPositions);
+}
+
+window.addEventListener('gamepadconnected', () => {
+    console.log('Gamepad connected.');
+    updateJoystickPositions();
+    drawMoon(); // Start the moon animation
+    drawPlanet(); // Start the planet animation
+});
+
+window.addEventListener('gamepaddisconnected', () => {
+    console.log('Gamepad disconnected.');
+});
+
+updateJoystickPositions(); // Begin joystick position updates
+</script>
+</body>
+</html>
