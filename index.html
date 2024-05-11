@@ -105,16 +105,21 @@
 
         const isAtExtreme = isJoystickAtExtreme(x, y, currentDirection.direction);
         const isNeutral = isJoystickInNeutral(x, y) && hasStabilized();
+        var done = false;
 
         if (isWaitingForRelease) {
             if (isNeutral) {
                 calibrationData[currentDirection.stick + currentDirection.direction].push({ x, y });
+                // Check to see if calibration is done by passing in the data
+                done = checkCalibrationData(currentDirection.stick + currentDirection.direction, currentDirection.direction, currentStep);
                 isWaitingForRelease = false;
                 currentStep++;
-                if (currentStep < totalSteps) {
+                // If the calibration is complete, then complete the current direction
+                if ((currentStep < totalSteps) && !done) {
                     instructMove();
                 } else {
                     completeCurrentDirection();
+                    duplicateArray = [];
                 }
             }
         } else {
@@ -122,6 +127,51 @@
                 instruct(`Release ${currentDirection.stick} joystick from ${currentDirection.direction}.`);
                 isWaitingForRelease = true;
             }
+        }
+    }
+
+    var duplicateArray = []
+    const countDuplicates = (arr) => {
+            //Object for tracking counts
+            const counts = {};
+
+            // Loop through each element in the array
+            arr.forEach((value) => {
+                // If the value is encountered for the first time, set the count to 1
+                if (!counts[value]) {
+                counts[value] = 1;
+                } else {
+                // If the value has been seen before, increment the count
+                counts[value]++;
+                }
+            });
+
+            // The counts object now holds the frequency of each value
+            return counts;
+    };
+
+    function checkCalibrationData(pos, dir, step){
+        // Check to see which direction is being calibrated
+        // Push the calibration value to the array
+        if(dir == 'left' || dir == 'right'){
+            duplicateArray.push(calibrationData[pos][step]['x'])
+        }else if(dir == 'up' || dir == 'down'){
+            duplicateArray.push(calibrationData[pos][step]['y'])
+        }
+
+        const counts = {};
+        // Counts the number of duplicates for each value and stores in counts
+        duplicateArray.forEach(function (x) { counts[x] = (counts[x] || 0) + 1; });
+
+        // Returns only the counts of each position
+        var val = countDuplicates(Object.values(counts))
+
+        // Checks to see if any position has repeated 3 times
+        if('3' in val){
+            duplicateArray = [];
+            return true;
+        }else{
+            return false;
         }
     }
 
